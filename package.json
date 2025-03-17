@@ -2,25 +2,33 @@
   "name": "florawy-landing-page",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "keywords": [],
+  "homepage": "https://github.com/yzxsolutions/Florawy#readme",
+  "bugs": {
+    "url": "https://github.com/yzxsolutions/Florawy/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Alfayads/Florawy.git"
+    "url": "git+https://github.com/yzxsolutions/Florawy.git"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/Alfayads/Florawy/issues"
+  "author": "",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon server.js",
+    "start": "node server.js"
   },
-  "homepage": "https://github.com/Alfayads/Florawy#readme",
   "dependencies": {
+    "cloudinary": "^1.41.3",
+    "dotenv": "^16.4.7",
+    "ejs": "^3.1.10",
     "express": "^4.21.2",
     "mongoose": "^8.12.1",
+    "multer": "^1.4.5-lts.1",
+    "multer-storage-cloudinary": "^4.0.0",
+    "nodemailer": "^6.10.0",
     "nodemon": "^3.1.9"
   }
 }
