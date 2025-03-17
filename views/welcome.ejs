@@ -125,13 +125,12 @@
             }
             
             const particles = document.querySelectorAll('.particle');
-            
             // Animation sequence
             setTimeout(() => {
                 // Show logo with scaling animation
                 logo.style.opacity = '1';
                 logo.style.transform = 'scale(2)';
-                
+                 
                 // Start ripple animations
                 animateRipple(ripple1, 300);
                 setTimeout(() => animateRipple(ripple2, 600), 300);

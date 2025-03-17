@@ -48,7 +48,7 @@ const upload = multer({
   { name: 'back_id', maxCount: 1 }
 ]);
 
-// Function to send confirmation email
+// Function to send confirmation email to the user
 const sendConfirmationEmail = async (to, firstName) => {
   const logoPath = path.join(process.cwd(), 'public', 'images', 'FLORAWY-15.svg');
   const mailOptions = {
@@ -86,8 +86,75 @@ const sendConfirmationEmail = async (to, firstName) => {
             <a href="https://www.florawy.com" class="button">Shop Now</a>
           </div>
           <div class="footer">
-            <p>&copy; 2025 Florawy. All rights reserved.</p>
+            <p>© 2025 Florawy. All rights reserved.</p>
             <p><a href="#">Privacy Policy</a> | <a href="#">Terms of Service</a></p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+    attachments: [{
+      filename: 'FLORAWY-15.svg',
+      path: logoPath,
+      cid: 'logo' // Referenced in the HTML as "cid:logo"
+    }]
+  };
+
+  await transporter.sendMail(mailOptions);
+};
+
+// Function to send admin notification email with full data and images
+const sendAdminNotificationEmail = async (contactData) => {
+  const logoPath = path.join(process.cwd(), 'public', 'images', 'FLORAWY-15.svg');
+  const adminEmail = process.env.ADMIN_EMAIL; // Add this to your .env file
+
+  if (!adminEmail) {
+    throw new Error('Admin email not configured in .env');
+  }
+
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: adminEmail,
+    subject: 'New Contact Form Submission - Florawy',
+    html: `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; }
+          .container { max-width: 800px; margin: 20px auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+          .header { background-color: #2E8B57; padding: 20px; text-align: center; }
+          .header img { max-width: 150px; height: auto; }
+          .content { padding: 30px; color: #333333; }
+          .content h1 { color: #2E8B57; font-size: 24px; margin-bottom: 20px; }
+          .content p { font-size: 16px; line-height: 1.6; margin-bottom: 15px; }
+          .content a { color: #2E8B57; text-decoration: none; }
+          .content a:hover { text-decoration: underline; }
+          .footer { background-color: #f4f4f4; padding: 20px; text-align: center; font-size: 14px; color: #777777; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <img src="cid:logo" alt="Florawy Logo" />
+          </div>
+          <div class="content">
+            <h1>New Contact Form Submission</h1>
+            <p><strong>First Name:</strong> ${contactData.firstName}</p>
+            <p><strong>Last Name:</strong> ${contactData.lastName}</p>
+            <p><strong>Email:</strong> ${contactData.email}</p>
+            <p><strong>Whatsapp Number:</strong> ${contactData.whatsappNumber}</p>
+            <p><strong>Address:</strong> ${contactData.address}</p>
+            <p><strong>Work Position:</strong> ${contactData.workPosition}</p>
+            <p><strong>Wants NFC Card:</strong> ${contactData.wantsNfcCard ? 'Yes' : 'No'}</p>
+            <p><strong>Accepted Terms:</strong> ${contactData.acceptedTerms ? 'Yes' : 'No'}</p>
+            <p><strong>Front ID:</strong> <a href="${contactData.frontId}" target="_blank">View Front ID</a></p>
+            ${contactData.backId ? `<p><strong>Back ID:</strong> <a href="${contactData.backId}" target="_blank">View Back ID</a></p>` : '<p><strong>Back ID:</strong> Not provided</p>'}
+          </div>
+          <div class="footer">
+            <p>© 2025 Florawy. All rights reserved.</p>
           </div>
         </div>
       </body>
@@ -167,13 +234,27 @@ export const submitContactForm = async (req, res) => {
         frontId: frontIdResult.secure_url,
         backId: backIdResult ? backIdResult.secure_url : null,
         wantsNfcCard: nfcCheckbox === true || nfcCheckbox === 'true',
-        acceptedTerms: termsCheckbox === true || termsCheckbox === 'true'
+        acceptedTerms: termsCheckbox === true || nfcCheckbox === 'true'
       });
 
       await contact.save();
 
       // Send confirmation email to the user
       await sendConfirmationEmail(email, first_name);
+
+      // Send notification email to the admin
+      await sendAdminNotificationEmail({
+        firstName: first_name,
+        lastName: last_name,
+        email,
+        whatsappNumber,
+        address,
+        workPosition,
+        frontId: frontIdResult.secure_url,
+        backId: backIdResult ? backIdResult.secure_url : null,
+        wantsNfcCard: nfcCheckbox === true || nfcCheckbox === 'true',
+        acceptedTerms: termsCheckbox === true || termsCheckbox === 'true'
+      });
 
       res.status(201).json({
         success: true,
