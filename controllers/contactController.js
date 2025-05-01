@@ -1,34 +1,35 @@
 import dotenv from 'dotenv';
-dotenv.config();
 import Contacts from '../models/contactSchema.js';
-import { v2 as cloudinary } from 'cloudinary';
+import getCloudinary from '../config/cloudinary.js';
 import multer from 'multer';
 import path from 'path';
 import nodemailer from 'nodemailer';
 
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
-});
+// Load environment variables
+dotenv.config();
 
-// Check Cloudinary configuration
-if (!process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_SECRET) {
-  console.error('Cloudinary configuration is incomplete. Please check your .env file.');
-  process.exit(1); // Exit with error if config is missing
+// Validate required environment variables
+const requiredEnvVars = [
+  'EMAIL_USER',
+  'EMAIL_PASS',
+  'ADMIN_EMAIL'
+];
+
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+if (missingEnvVars.length > 0) {
+  throw new Error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
 }
 
 // Configure Nodemailer
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // Use your email service (e.g., Gmail, SendGrid, etc.)
+  service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER, // Your email address
-    pass: process.env.EMAIL_PASS  // Your email password or app-specific password
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   }
 });
 
-// Configure multer for memory storage (temporary)
+// Configure multer for file uploads
 const storage = multer.memoryStorage();
 const upload = multer({
   storage,
@@ -48,14 +49,39 @@ const upload = multer({
   { name: 'back_id', maxCount: 1 }
 ]);
 
-// Function to send confirmation email to the user
-const sendConfirmationEmail = async (to, firstName) => {
-  const logoPath = path.join(process.cwd(), 'public', 'images', 'FLORAWY-15.svg');
-  const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to: to,
-    subject: 'Welcome to Florawy - Form Submission Successful!',
-    html: `
+// Helper function to upload files to Cloudinary
+const uploadToCloudinary = async (buffer, filename) => {
+  try {
+    const cloudinary = await getCloudinary();
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'florawy_ids',
+          resource_type: 'auto',
+          public_id: filename,
+          transformation: [{ width: 500, height: 500, crop: 'limit' }]
+        },
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary upload error:', error);
+            reject(new Error(`Failed to upload file to Cloudinary: ${error.message}`));
+          } else {
+            resolve(result);
+          }
+        }
+      );
+      uploadStream.end(buffer);
+    });
+  } catch (error) {
+    console.error('Error in uploadToCloudinary:', error);
+    throw new Error(`Failed to process file upload: ${error.message}`);
+  }
+};
+
+// Email template helper
+const getEmailTemplate = (templateName, data) => {
+  const templates = {
+    confirmation: `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -71,7 +97,6 @@ const sendConfirmationEmail = async (to, firstName) => {
           .content p { font-size: 16px; line-height: 1.6; margin-bottom: 20px; }
           .button { display: inline-block; padding: 12px 25px; background-color: #2E8B57; color: #ffffff; text-decoration: none; border-radius: 5px; font-size: 16px; }
           .footer { background-color: #f4f4f4; padding: 20px; text-align: center; font-size: 14px; color: #777777; }
-          .footer a { color: #2E8B57; text-decoration: none; }
         </style>
       </head>
       <body>
@@ -80,43 +105,19 @@ const sendConfirmationEmail = async (to, firstName) => {
             <img src="cid:logo" alt="Florawy Logo" />
           </div>
           <div class="content">
-            <h1>Hello ${firstName},</h1>
-            <p>Thank you for reaching out to Florawy! Your contact form has been successfully submitted. We’re thrilled to have you with us and will get back to you soon with more details.</p>
+            <h1>Hello ${data.firstName},</h1>
+            <p>Thank you for reaching out to Florawy! Your contact form has been successfully submitted. We're thrilled to have you with us and will get back to you soon with more details.</p>
             <p>In the meantime, feel free to explore our stunning floral collections or get in touch if you have any questions!</p>
             <a href="https://www.florawy.com" class="button">Shop Now</a>
           </div>
           <div class="footer">
             <p>© 2025 Florawy. All rights reserved.</p>
-            <p><a href="#">Privacy Policy</a> | <a href="#">Terms of Service</a></p>
           </div>
         </div>
       </body>
       </html>
     `,
-    attachments: [{
-      filename: 'FLORAWY-15.svg',
-      path: logoPath,
-      cid: 'logo' // Referenced in the HTML as "cid:logo"
-    }]
-  };
-
-  await transporter.sendMail(mailOptions);
-};
-
-// Function to send admin notification email with full data and images
-const sendAdminNotificationEmail = async (contactData) => {
-  const logoPath = path.join(process.cwd(), 'public', 'images', 'FLORAWY-15.svg');
-  const adminEmail = process.env.ADMIN_EMAIL; // Add this to your .env file
-
-  if (!adminEmail) {
-    throw new Error('Admin email not configured in .env');
-  }
-
-  const mailOptions = {
-    from: process.env.EMAIL_USER,
-    to: adminEmail,
-    subject: 'New Contact Form Submission - Florawy',
-    html: `
+    adminNotification: `
       <!DOCTYPE html>
       <html lang="en">
       <head>
@@ -130,9 +131,6 @@ const sendAdminNotificationEmail = async (contactData) => {
           .content { padding: 30px; color: #333333; }
           .content h1 { color: #2E8B57; font-size: 24px; margin-bottom: 20px; }
           .content p { font-size: 16px; line-height: 1.6; margin-bottom: 15px; }
-          .content a { color: #2E8B57; text-decoration: none; }
-          .content a:hover { text-decoration: underline; }
-          .footer { background-color: #f4f4f4; padding: 20px; text-align: center; font-size: 14px; color: #777777; }
         </style>
       </head>
       <body>
@@ -142,34 +140,45 @@ const sendAdminNotificationEmail = async (contactData) => {
           </div>
           <div class="content">
             <h1>New Contact Form Submission</h1>
-            <p><strong>First Name:</strong> ${contactData.firstName}</p>
-            <p><strong>Last Name:</strong> ${contactData.lastName}</p>
-            <p><strong>Email:</strong> ${contactData.email}</p>
-            <p><strong>Whatsapp Number:</strong> ${contactData.whatsappNumber}</p>
-            <p><strong>Address:</strong> ${contactData.address}</p>
-            <p><strong>Work Position:</strong> ${contactData.workPosition}</p>
-            <p><strong>Wants NFC Card:</strong> ${contactData.wantsNfcCard ? 'Yes' : 'No'}</p>
-            <p><strong>Accepted Terms:</strong> ${contactData.acceptedTerms ? 'Yes' : 'No'}</p>
-            <p><strong>Front ID:</strong> <a href="${contactData.frontId}" target="_blank">View Front ID</a></p>
-            ${contactData.backId ? `<p><strong>Back ID:</strong> <a href="${contactData.backId}" target="_blank">View Back ID</a></p>` : '<p><strong>Back ID:</strong> Not provided</p>'}
-          </div>
-          <div class="footer">
-            <p>© 2025 Florawy. All rights reserved.</p>
+            <p><strong>First Name:</strong> ${data.firstName}</p>
+            <p><strong>Last Name:</strong> ${data.lastName}</p>
+            <p><strong>Email:</strong> ${data.email}</p>
+            <p><strong>Whatsapp Number:</strong> ${data.whatsappNumber}</p>
+            <p><strong>Address:</strong> ${data.address}</p>
+            <p><strong>Work Position:</strong> ${data.workPosition}</p>
+            <p><strong>Wants NFC Card:</strong> ${data.wantsNfcCard ? 'Yes' : 'No'}</p>
+            <p><strong>Accepted Terms:</strong> ${data.acceptedTerms ? 'Yes' : 'No'}</p>
+            <p><strong>Front ID:</strong> <a href="${data.frontId}" target="_blank">View Front ID</a></p>
+            ${data.backId ? `<p><strong>Back ID:</strong> <a href="${data.backId}" target="_blank">View Back ID</a></p>` : '<p><strong>Back ID:</strong> Not provided</p>'}
           </div>
         </div>
       </body>
       </html>
-    `,
-    attachments: [{
-      filename: 'FLORAWY-15.svg',
-      path: logoPath,
-      cid: 'logo' // Referenced in the HTML as "cid:logo"
-    }]
+    `
   };
-
-  await transporter.sendMail(mailOptions);
+  return templates[templateName];
 };
 
+// Email sending functions
+const sendEmail = async (options) => {
+  try {
+    const logoPath = path.join(process.cwd(), 'public', 'images', 'FLORAWY-15.svg');
+    const mailOptions = {
+      ...options,
+      attachments: [{
+        filename: 'FLORAWY-15.svg',
+        path: logoPath,
+        cid: 'logo'
+      }]
+    };
+    await transporter.sendMail(mailOptions);
+  } catch (error) {
+    console.error('Error sending email:', error);
+    throw new Error('Failed to send email');
+  }
+};
+
+// Main controller function
 export const submitContactForm = async (req, res) => {
   try {
     upload(req, res, async (err) => {
@@ -198,70 +207,84 @@ export const submitContactForm = async (req, res) => {
         });
       }
 
-      // Helper function to upload to Cloudinary
-      const uploadToCloudinary = (buffer) => {
-        return new Promise((resolve, reject) => {
-          cloudinary.uploader.upload_stream(
-            {
-              folder: 'florawy_ids',
-              resource_type: 'auto',
-              transformation: [{ width: 500, height: 500, crop: 'limit' }]
-            },
-            (error, result) => {
-              if (error) reject(error);
-              else resolve(result);
-            }
-          ).end(buffer);
+      try {
+        // Upload files to Cloudinary
+        const frontIdFile = req.files['front_id'][0];
+        const frontIdResult = await uploadToCloudinary(
+          frontIdFile.buffer,
+          `front_id_${Date.now()}_${frontIdFile.originalname}`
+        );
+
+        let backIdResult = null;
+        if (req.files['back_id']) {
+          const backIdFile = req.files['back_id'][0];
+          backIdResult = await uploadToCloudinary(
+            backIdFile.buffer,
+            `back_id_${Date.now()}_${backIdFile.originalname}`
+          );
+        }
+
+        // Create contact record
+        const contact = new Contacts({
+          firstName: first_name,
+          lastName: last_name,
+          email,
+          whatsappNumber,
+          address,
+          workPosition,
+          frontId: frontIdResult.secure_url,
+          backId: backIdResult ? backIdResult.secure_url : null,
+          wantsNfcCard: nfcCheckbox === true || nfcCheckbox === 'true',
+          acceptedTerms: termsCheckbox === true || termsCheckbox === 'true'
         });
-      };
 
-      // Upload front_id to Cloudinary
-      const frontIdResult = await uploadToCloudinary(req.files['front_id'][0].buffer);
+        await contact.save();
 
-      // Upload back_id to Cloudinary if provided
-      let backIdResult = null;
-      if (req.files['back_id']) {
-        backIdResult = await uploadToCloudinary(req.files['back_id'][0].buffer);
+        // Prepare email data
+        const emailData = {
+          firstName: first_name,
+          lastName: last_name,
+          email,
+          whatsappNumber,
+          address,
+          workPosition,
+          frontId: frontIdResult.secure_url,
+          backId: backIdResult ? backIdResult.secure_url : null,
+          wantsNfcCard: nfcCheckbox === true || nfcCheckbox === 'true',
+          acceptedTerms: termsCheckbox === true || termsCheckbox === 'true'
+        };
+
+        // Send confirmation email
+        await sendEmail({
+          from: process.env.EMAIL_USER,
+          to: email,
+          subject: 'Welcome to Florawy - Form Submission Successful!',
+          html: getEmailTemplate('confirmation', { firstName: first_name })
+        });
+
+        // Send admin notification
+        await sendEmail({
+          from: email,
+          to: process.env.ADMIN_EMAIL,
+          subject: 'New Contact Form Submission - Florawy',
+          html: getEmailTemplate('adminNotification', emailData)
+        });
+
+        res.status(201).json({
+          success: true,
+          message: 'Form submitted successfully'
+        });
+      } catch (error) {
+        console.error('Error processing form submission:', error);
+        res.status(500).json({
+          success: false,
+          message: 'Error processing form submission',
+          error: error.message
+        });
       }
-
-      const contact = new Contacts({
-        firstName: first_name,
-        lastName: last_name,
-        email,
-        whatsappNumber,
-        address,
-        workPosition,
-        frontId: frontIdResult.secure_url,
-        backId: backIdResult ? backIdResult.secure_url : null,
-        wantsNfcCard: nfcCheckbox === true || nfcCheckbox === 'true',
-        acceptedTerms: termsCheckbox === true || nfcCheckbox === 'true'
-      });
-
-      await contact.save();
-
-      // Send confirmation email to the user
-      await sendConfirmationEmail(email, first_name);
-
-      // Send notification email to the admin
-      await sendAdminNotificationEmail({
-        firstName: first_name,
-        lastName: last_name,
-        email,
-        whatsappNumber,
-        address,
-        workPosition,
-        frontId: frontIdResult.secure_url,
-        backId: backIdResult ? backIdResult.secure_url : null,
-        wantsNfcCard: nfcCheckbox === true || nfcCheckbox === 'true',
-        acceptedTerms: termsCheckbox === true || termsCheckbox === 'true'
-      });
-
-      res.status(201).json({
-        success: true,
-        message: 'Form submitted successfully'
-      });
     });
   } catch (error) {
+    console.error('Server error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',

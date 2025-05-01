@@ -3,17 +3,27 @@ import { submitContactForm } from '../controllers/contactController.js';
 
 const userRouter = express.Router();
 
+// Welcome page route
+userRouter.get('/', (req, res) => {
+  try {
+    res.render('welcome');
+  } catch (error) {
+    console.error('Error rendering welcome page:', error);
+    res.status(500).render('error', { message: 'Internal server error' });
+  }
+});
 
-userRouter.get('/' , (req,res) => {
-  res.render('welcome');
-})
+// Home page route
+userRouter.get('/home', (req, res) => {
+  try {
+    res.render('home');
+  } catch (error) {
+    console.error('Error rendering home page:', error);
+    res.status(500).render('error', { message: 'Internal server error' });
+  }
+});
 
-userRouter.get('/home', (req,res) =>{
-  res.render('home');
-})
-
-
+// Contact form submission route
 userRouter.post('/submit', submitContactForm);
-
 
 export default userRouter;
