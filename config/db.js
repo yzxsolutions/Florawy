@@ -5,27 +5,25 @@ const ConnectDB = async (url) => {
   if (!url || typeof url !== 'string') {
     throw new Error('Invalid MongoDB connection URL');
   }
-
+  
   // Check if URL starts with mongodb:// or mongodb+srv://
   if (!url.startsWith('mongodb://') && !url.startsWith('mongodb+srv://')) {
     throw new Error('Invalid MongoDB connection URL format');
   }
-
+  
   try {
-    // Add connection options
+    // Add connection options - removed deprecated options
     const options = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     };
-
+    
     // Check if already connected
     if (mongoose.connection.readyState === 1) {
       console.log('Already connected to MongoDB');
       return mongoose.connection;
     }
-
+    
     // Connect to MongoDB
     const response = await mongoose.connect(url, options);
     console.log("MongoDB connected successfully ==> ", response.connection.host);
@@ -34,11 +32,11 @@ const ConnectDB = async (url) => {
     mongoose.connection.on('error', (err) => {
       console.error('MongoDB connection error:', err);
     });
-
+    
     mongoose.connection.on('disconnected', () => {
       console.warn('MongoDB disconnected');
     });
-
+    
     // Handle process termination
     const handleShutdown = async () => {
       try {
@@ -50,15 +48,15 @@ const ConnectDB = async (url) => {
         process.exit(1);
       }
     };
-
+    
     process.on('SIGINT', handleShutdown);
     process.on('SIGTERM', handleShutdown);
-
+    
     return response;
   } catch (error) {
     console.error("MongoDB Connection Error ==> ", error.message);
     // Ensure we're throwing a proper error object
-    throw new Error(`MongoDB connection failed: ${error.message}`);
+    throw new Error(⁠ MongoDB connection failed: ${error.message} ⁠);
   }
 }
 
