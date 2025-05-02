@@ -28,6 +28,8 @@ const __dirname = path.dirname(__filename);
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, 'views'));
 
+app.use(express.static(path.join(__dirname,'public')))
+
 // Initialize database connection and start server
 const startServer = async () => {
   let server;
